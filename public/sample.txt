@@ -1,0 +1,79 @@
+PDF Utility Tool - Sample Text Document
+==========================================
+
+Welcome to the PDF Utility Tool!
+
+This is a sample text file that demonstrates the text-to-PDF conversion feature. 
+When you upload this file to the "Convert to PDF" tab, it will be transformed 
+into a properly formatted PDF document.
+
+FEATURES OVERVIEW
+-----------------
+
+1. CREATE PDF
+   Generate PDF documents from images or text content. Upload multiple images 
+   to create a multi-page PDF, or enter text directly to create a text-based 
+   PDF document.
+
+2. MERGE PDFs
+   Combine multiple PDF files into a single document. Simply upload 2 or more 
+   PDF files and click merge to create a unified document.
+
+3. COMPRESS PDF
+   Reduce the file size of your PDF documents while maintaining readability. 
+   This feature is perfect for sharing large PDF files via email or web.
+
+4. CONVERT DOCUMENTS
+   Transform various document formats into PDF:
+   - Word documents (.docx)
+   - Excel spreadsheets (.xlsx, .xls)  
+   - Plain text files (.txt)
+   - HTML web pages (.html, .htm)
+
+TECHNICAL SPECIFICATIONS
+-------------------------
+
+- Maximum file size: Varies by document type
+- Output format: PDF/A compliant
+- Font handling: Automatic font substitution for best compatibility
+- Image quality: Optimized for web and print
+- Security: All processing done locally in your browser
+
+HOW TO USE THE CONVERSION FEATURE
+----------------------------------
+
+Step 1: Navigate to the "Convert to PDF" tab
+Step 2: Upload your document by clicking the upload area or drag-and-drop
+Step 3: Wait for the file to be processed (you'll see a progress indicator)
+Step 4: Click "Convert to PDF" to start the conversion
+Step 5: Download your converted PDF file
+
+SUPPORTED BROWSERS
+------------------
+
+This tool works best in modern browsers that support:
+- HTML5 File API
+- Canvas rendering
+- Modern JavaScript features
+- Local file processing
+
+For best results, we recommend using the latest versions of:
+- Google Chrome
+- Mozilla Firefox  
+- Microsoft Edge
+- Safari
+
+PRIVACY & SECURITY
+------------------
+
+Your documents are processed entirely in your browser - no files are uploaded 
+to external servers. This ensures maximum privacy and security for sensitive 
+documents.
+
+Thank you for using the PDF Utility Tool!
+
+For more information and updates, visit our documentation.
+
+---
+Sample document created for testing text-to-PDF conversion
+Generated: January 2025
