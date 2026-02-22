@@ -8,15 +8,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Download, X, FileText, Loader2 } from "lucide-react"
 import { PDFFallbackViewer } from "./pdf-fallback-viewer"
 import dynamic from "next/dynamic"
+import { pdfjs } from "react-pdf"
 
-// Set up PDF.js worker at module level
-// react-pdf bundles pdfjs-dist@5.3.31 — use a matching worker file via CDN.
+// Set up PDF.js worker synchronously at module load time.
+// Uses the pre-built worker copied to /public/ by the postinstall script.
 if (typeof window !== 'undefined') {
-  import('react-pdf').then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
-  }).catch(err => {
-    console.error('Failed to import react-pdf:', err)
-  })
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.react-pdf.min.js'
 }
 
 // Create an inline PDF viewer component to avoid chunk loading issues
@@ -42,8 +39,6 @@ const PDFViewer = dynamic(
         const { Document, Page, pdfjs } = pdfModule
         const { useMemo } = await import("react")
 
-        // Ensure worker is set up via Unpkg CDN
-        pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
         return {
           default: ({
             pdfUrl,

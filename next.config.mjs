@@ -19,6 +19,14 @@ const nextConfig = {
         encoding: false,
       }
     }
+    // Prevent webpack from trying to compile pdf.worker.mjs as a separate worker chunk.
+    // pdfjs-dist is in transpilePackages, so webpack finds the `new Worker(new URL(...))` pattern
+    // inside pdfjs-dist and tries to bundle the ~3MB worker file, causing 503 in dev.
+    // Setting the alias to false makes webpack emit an empty stub; pdfjs uses workerSrc instead.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'pdfjs-dist/build/pdf.worker.mjs': false,
+    }
     return config
   },
   async headers() {
