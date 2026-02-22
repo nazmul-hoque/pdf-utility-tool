@@ -1,3 +1,8 @@
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -25,7 +30,7 @@ const nextConfig = {
     // Setting the alias to false makes webpack emit an empty stub; pdfjs uses workerSrc instead.
     config.resolve.alias = {
       ...config.resolve.alias,
-      'pdfjs-dist/build/pdf.worker.mjs': false,
+      'pdfjs-dist/build/pdf.worker.mjs': path.resolve(__dirname, 'lib/pdf-worker-stub.js'),
     }
     return config
   },
