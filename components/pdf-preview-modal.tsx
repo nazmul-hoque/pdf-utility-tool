@@ -11,9 +11,12 @@ import dynamic from "next/dynamic"
 import { pdfjs } from "react-pdf"
 
 // Set up PDF.js worker synchronously at module load time.
-// Uses the pre-built worker copied to /public/ by the postinstall script.
+// Next.js will automatically bundle this and serve it with the proper hash/MIME type.
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.react-pdf.min.js'
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url
+  ).toString()
 }
 
 // Create an inline PDF viewer component to avoid chunk loading issues
@@ -307,7 +310,7 @@ export function PDFPreviewModal({ isOpen, onClose, file, pdfBytes, fileName, tit
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {/* Full-screen on mobile, centred modal on sm+ */}
-      <DialogContent className="flex flex-col w-full max-w-full sm:max-w-6xl p-0 h-dvh sm:h-auto sm:max-h-[90vh] overflow-hidden">
+      <DialogContent aria-describedby={undefined} className="flex flex-col w-full max-w-full sm:max-w-6xl p-0 h-dvh sm:h-auto sm:max-h-[90vh] overflow-hidden">
         {/* ── Header ── */}
         <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b shrink-0">
           <div className="flex items-center justify-between gap-2">

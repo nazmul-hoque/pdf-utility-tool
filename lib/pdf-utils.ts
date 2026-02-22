@@ -1076,7 +1076,10 @@ export class PDFProcessor {
 
       const pdfjsLib = await import('pdfjs-dist')
       if (typeof window !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url
+        ).toString()
       }
 
       const arrayBuffer = await file.arrayBuffer()
@@ -1169,7 +1172,10 @@ export class PDFProcessor {
     try {
       const pdfjsLib = await import('pdfjs-dist')
       if (typeof window !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url
+        ).toString()
       }
 
       const arrayBuffer = await file.arrayBuffer()
