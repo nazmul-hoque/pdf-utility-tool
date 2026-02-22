@@ -10,12 +10,11 @@ import { PDFFallbackViewer } from "./pdf-fallback-viewer"
 import dynamic from "next/dynamic"
 
 // Set up PDF.js worker at module level
+// react-pdf bundles pdfjs-dist@5.3.31 — use a matching worker file,
+// separate from the 5.3.93 worker used by pdf-utils.ts directly.
 if (typeof window !== 'undefined') {
   import('react-pdf').then(({ pdfjs }) => {
-    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-      const localWorkerSrc = `${window.location.origin}/pdf.worker.mjs`
-      pdfjs.GlobalWorkerOptions.workerSrc = localWorkerSrc
-    }
+    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.mjs`
   }).catch(err => {
     console.error('Failed to import react-pdf:', err)
   })
@@ -44,22 +43,19 @@ const PDFViewer = dynamic(
         const { Document, Page, pdfjs } = pdfModule
         const { useMemo } = await import("react")
 
-        // Ensure worker is set up (redundant check)
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-          const localWorkerSrc = `${window.location.origin}/pdf.worker.mjs`
-          pdfjs.GlobalWorkerOptions.workerSrc = localWorkerSrc
-        }
+        // Ensure worker is set up (fallback for dynamic import path)
+        pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.mjs`
 
         return {
-          default: ({ 
-            pdfUrl, 
-            onDocumentLoadSuccess, 
-            onDocumentLoadError, 
-            onPageLoadError, 
-            currentPage, 
-            scale, 
-            rotation, 
-            numPages 
+          default: ({
+            pdfUrl,
+            onDocumentLoadSuccess,
+            onDocumentLoadError,
+            onPageLoadError,
+            currentPage,
+            scale,
+            rotation,
+            numPages
           }: any) => {
             // Memoize the options object to prevent unnecessary reloads
             const documentOptions = useMemo(() => ({
@@ -68,46 +64,46 @@ const PDFViewer = dynamic(
               standardFontDataUrl: `//unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
               verbosity: 0,
             }), [pdfjs.version])
-            
+
             return (
-            <Document
-              key={pdfUrl ? `doc-${pdfUrl}` : 'no-doc'}
-              file={pdfUrl}
-              onLoadSuccess={(pdf) => {
-                onDocumentLoadSuccess?.(pdf)
-              }}
-              onLoadError={(error) => {
-                console.error('PDF Document: Load error:', error)
-                onDocumentLoadError?.(error)
-              }}
-              options={documentOptions}
-              loading={
-                <div className="flex items-center justify-center p-8">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <span className="text-sm">Loading PDF...</span>
-                  </div>
-                </div>
-              }
-            >
-              {numPages > 0 && (
-                <Page
-                  key={`page_${currentPage}_${scale}_${rotation}`}
-                  pageNumber={currentPage}
-                  scale={scale}
-                  rotate={rotation}
-                  onLoadError={onPageLoadError}
-                  loading={
-                    <div className="flex items-center justify-center p-8 border border-dashed border-muted-foreground/25 rounded-lg min-h-[400px] min-w-[300px]">
-                      <Loader2 className="h-6 w-6 animate-spin" />
+              <Document
+                key={pdfUrl ? `doc-${pdfUrl}` : 'no-doc'}
+                file={pdfUrl}
+                onLoadSuccess={(pdf) => {
+                  onDocumentLoadSuccess?.(pdf)
+                }}
+                onLoadError={(error) => {
+                  console.error('PDF Document: Load error:', error)
+                  onDocumentLoadError?.(error)
+                }}
+                options={documentOptions}
+                loading={
+                  <div className="flex items-center justify-center p-8">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                      <span className="text-sm">Loading PDF...</span>
                     </div>
-                  }
-                  className="shadow-lg border border-border rounded-lg overflow-hidden"
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                />
-              )}
-            </Document>
+                  </div>
+                }
+              >
+                {numPages > 0 && (
+                  <Page
+                    key={`page_${currentPage}_${scale}_${rotation}`}
+                    pageNumber={currentPage}
+                    scale={scale}
+                    rotate={rotation}
+                    onLoadError={onPageLoadError}
+                    loading={
+                      <div className="flex items-center justify-center p-8 border border-dashed border-muted-foreground/25 rounded-lg min-h-[400px] min-w-[300px]">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    }
+                    className="shadow-lg border border-border rounded-lg overflow-hidden"
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                  />
+                )}
+              </Document>
             )
           }
         }
@@ -317,25 +313,36 @@ export function PDFPreviewModal({ isOpen, onClose, file, pdfBytes, fileName, tit
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] p-0">
-        <DialogHeader className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-blue-500" />
-              <div>
-                <DialogTitle>{title || "PDF Preview"}</DialogTitle>
-                {fileName && <p className="text-sm text-muted-foreground mt-1">{fileName}</p>}
+      {/* Full-screen on mobile, centred modal on sm+ */}
+      <DialogContent className="flex flex-col w-full max-w-full sm:max-w-6xl p-0 h-dvh sm:h-auto sm:max-h-[90vh] overflow-hidden">
+        {/* ── Header ── */}
+        <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500 shrink-0" />
+              <div className="min-w-0">
+                <DialogTitle className="text-sm sm:text-base truncate">{title || "PDF Preview"}</DialogTitle>
+                {fileName && (
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate hidden sm:block">{fileName}</p>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               {(file || pdfBytes) && (
-                <Button variant="outline" size="sm" onClick={downloadFile}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
+                <>
+                  {/* Desktop: label + icon */}
+                  <Button variant="outline" size="sm" onClick={downloadFile} className="hidden sm:inline-flex">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                  {/* Mobile: icon only */}
+                  <Button variant="outline" size="icon" className="h-9 w-9 sm:hidden" onClick={downloadFile}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </>
               )}
               <DialogClose asChild>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="icon" className="h-9 w-9">
                   <X className="h-4 w-4" />
                 </Button>
               </DialogClose>
@@ -343,52 +350,49 @@ export function PDFPreviewModal({ isOpen, onClose, file, pdfBytes, fileName, tit
           </div>
         </DialogHeader>
 
-        <div className="flex flex-col h-[calc(90vh-80px)]">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={goToPrevPage} disabled={currentPage <= 1 || !numPages}>
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* ── Toolbar — wraps on narrow screens ── */}
+          <div className="flex items-center justify-between gap-2 flex-wrap px-3 sm:px-6 py-2 border-b bg-muted/30 shrink-0">
+            {/* Page navigation */}
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={goToPrevPage} disabled={currentPage <= 1 || !numPages}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {numPages > 0 ? `Page ${currentPage} of ${numPages}` : "Loading..."}
+              <div className="flex items-center gap-1.5 mx-1">
+                <span className="text-xs sm:text-sm font-medium whitespace-nowrap">
+                  {numPages > 0 ? `${currentPage} / ${numPages}` : "…"}
                 </span>
                 {numPages > 0 && (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-[10px] hidden sm:inline-flex">
                     {numPages} pages
                   </Badge>
                 )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToNextPage}
-                disabled={currentPage >= numPages || !numPages}
-              >
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={goToNextPage} disabled={currentPage >= numPages || !numPages}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={zoomOut} disabled={scale <= 0.5 || !numPages}>
+            {/* Zoom + rotation */}
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={zoomOut} disabled={scale <= 0.5 || !numPages}>
                 <ZoomOut className="h-4 w-4" />
               </Button>
-              <span className="text-sm font-medium min-w-[60px] text-center">{Math.round(scale * 100)}%</span>
-              <Button variant="outline" size="sm" onClick={zoomIn} disabled={scale >= 3.0 || !numPages}>
+              <span className="text-xs sm:text-sm font-medium min-w-[44px] text-center">{Math.round(scale * 100)}%</span>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={zoomIn} disabled={scale >= 3.0 || !numPages}>
                 <ZoomIn className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={rotate} disabled={!numPages}>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={rotate} disabled={!numPages}>
                 <RotateCw className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={resetView} disabled={!numPages}>
+              <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={resetView} disabled={!numPages}>
                 Reset
               </Button>
             </div>
           </div>
 
           {/* PDF Viewer */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="flex justify-center items-center min-h-full p-6">
               {!pdfUrl ? (
                 <div className="text-center text-muted-foreground">

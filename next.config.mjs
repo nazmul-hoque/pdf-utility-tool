@@ -9,34 +9,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Security headers
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; media-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' blob:;",
-          },
-        ],
-      },
-    ]
-  },
+  // pdfjs-dist 5.x is ESM-only and must be transpiled by webpack
+  transpilePackages: ['pdfjs-dist'],
   webpack: (config, { isServer }) => {
-    // Handle PDF.js worker and canvas dependencies
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -44,32 +19,30 @@ const nextConfig = {
         encoding: false,
       }
     }
-    
-    // Exclude pdfjs-dist from server-side compilation
-    if (isServer) {
-      config.externals = config.externals || []
-      config.externals.push({
-        'pdfjs-dist': 'commonjs pdfjs-dist',
-        'react-pdf': 'commonjs react-pdf',
-      })
-    }
-    
     return config
   },
-  // Ensure worker files are served with correct headers
   async headers() {
     return [
+      // Security headers for all routes
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          {
+            key: 'Content-Security-Policy',
+            value:
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; media-src 'self' blob:; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' blob:;",
+          },
+        ],
+      },
+      // COEP/COOP headers required for SharedArrayBuffer (PDF worker)
       {
         source: '/workers/:path*',
         headers: [
-          {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
-          },
-          {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin',
-          },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
         ],
       },
     ]

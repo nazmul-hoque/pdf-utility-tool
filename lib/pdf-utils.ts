@@ -29,6 +29,14 @@ export interface PDFPageOperation {
   rotation?: 0 | 90 | 180 | 270
 }
 
+export interface WatermarkOptions {
+  text: string
+  fontSize?: number
+  opacity?: number
+  rotation?: number
+  color?: { r: number; g: number; b: number }
+}
+
 export class PDFProcessor {
   private static async loadImage(file: File): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
@@ -109,6 +117,33 @@ export class PDFProcessor {
     }
   }
 
+  private static resizeImageToDataUrl(
+    imageBytes: Uint8Array,
+    maxDimension = 2480,
+    quality = 0.92,
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([imageBytes as Uint8Array<ArrayBuffer>])
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
+        const canvas = document.createElement("canvas")
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext("2d")!
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(url)
+        resolve(canvas.toDataURL("image/jpeg", quality))
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error("Failed to decode image for optimization"))
+      }
+      img.src = url
+    })
+  }
+
   static async createPDFFromImages(
     imageFiles: File[],
     onProgress?: (progress: ProcessingProgress) => void,
@@ -120,69 +155,52 @@ export class PDFProcessor {
 
       for (let i = 0; i < imageFiles.length; i++) {
         const imageFile = imageFiles[i]
-        const progress = 10 + (i / imageFiles.length) * 80
+        try {
+          const progress = 10 + (i / imageFiles.length) * 80
 
-        onProgress?.({
-          progress,
-          status: "processing",
-          message: `Processing image ${i + 1} of ${imageFiles.length}...`,
-        })
-
-        const imageBytes = await this.loadImage(imageFile)
-
-        let image
-        if (imageFile.type === "image/jpeg" || imageFile.type === "image/jpg") {
-          image = await pdfDoc.embedJpg(imageBytes)
-        } else if (imageFile.type === "image/png") {
-          image = await pdfDoc.embedPng(imageBytes)
-        } else {
-          // Convert other formats to PNG using canvas
-          const canvas = document.createElement("canvas")
-          const ctx = canvas.getContext("2d")
-          const img = new Image()
-
-          await new Promise((resolve, reject) => {
-            img.onload = resolve
-            img.onerror = reject
-            img.src = URL.createObjectURL(imageFile)
+          onProgress?.({
+            progress,
+            status: "processing",
+            message: `Processing image ${i + 1} of ${imageFiles.length}...`,
           })
 
-          canvas.width = img.width
-          canvas.height = img.height
-          ctx?.drawImage(img, 0, 0)
+          const imageBytes = await this.loadImage(imageFile)
 
-          const pngDataUrl = canvas.toDataURL("image/png")
-          const pngBytes = Uint8Array.from(atob(pngDataUrl.split(",")[1]), (c) => c.charCodeAt(0))
-          image = await pdfDoc.embedPng(pngBytes)
+          // Resize to 300 DPI target (2480px max) and encode as JPEG 0.92
+          const dataUrl = await this.resizeImageToDataUrl(imageBytes)
+          const base64Content = dataUrl.split(",")[1]
+          if (!base64Content) throw new Error("Failed to generate optimized image data")
+          const jpegBytes = Uint8Array.from(atob(base64Content), (c) => c.charCodeAt(0))
+          const image = await pdfDoc.embedJpg(jpegBytes)
 
-          URL.revokeObjectURL(img.src)
+          const page = pdfDoc.addPage()
+          const { width: pageWidth, height: pageHeight } = page.getSize()
+
+          // Calculate dimensions to fit image while maintaining aspect ratio
+          const imageAspectRatio = image.width / image.height
+          const pageAspectRatio = pageWidth / pageHeight
+
+          let drawWidth, drawHeight
+          if (imageAspectRatio > pageAspectRatio) {
+            drawWidth = pageWidth - 40 // 20px margin on each side
+            drawHeight = drawWidth / imageAspectRatio
+          } else {
+            drawHeight = pageHeight - 40 // 20px margin on top and bottom
+            drawWidth = drawHeight * imageAspectRatio
+          }
+
+          const x = (pageWidth - drawWidth) / 2
+          const y = (pageHeight - drawHeight) / 2
+
+          page.drawImage(image, {
+            x,
+            y,
+            width: drawWidth,
+            height: drawHeight,
+          })
+        } catch (err) {
+          throw new Error(`Error processing image ${imageFile.name}: ${err instanceof Error ? err.message : "Unknown error"}`)
         }
-
-        const page = pdfDoc.addPage()
-        const { width: pageWidth, height: pageHeight } = page.getSize()
-
-        // Calculate dimensions to fit image while maintaining aspect ratio
-        const imageAspectRatio = image.width / image.height
-        const pageAspectRatio = pageWidth / pageHeight
-
-        let drawWidth, drawHeight
-        if (imageAspectRatio > pageAspectRatio) {
-          drawWidth = pageWidth - 40 // 20px margin on each side
-          drawHeight = drawWidth / imageAspectRatio
-        } else {
-          drawHeight = pageHeight - 40 // 20px margin on top and bottom
-          drawWidth = drawHeight * imageAspectRatio
-        }
-
-        const x = (pageWidth - drawWidth) / 2
-        const y = (pageHeight - drawHeight) / 2
-
-        page.drawImage(image, {
-          x,
-          y,
-          width: drawWidth,
-          height: drawHeight,
-        })
       }
 
       onProgress?.({ progress: 95, status: "processing", message: "Finalizing PDF..." })
@@ -319,15 +337,15 @@ export class PDFProcessor {
           copiedPages.forEach((page) => mergedPdf.addPage(page))
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "Unknown error"
-          
+
           // Check for specific corruption errors
           if (errorMessage.includes("Expected instance of PDFDict") ||
-              errorMessage.includes("UnexpectedObjectTypeError") ||
-              errorMessage.includes("corrupted") ||
-              errorMessage.includes("invalid structure")) {
+            errorMessage.includes("UnexpectedObjectTypeError") ||
+            errorMessage.includes("corrupted") ||
+            errorMessage.includes("invalid structure")) {
             throw new Error(`PDF file "${file.name}" is corrupted or has an invalid structure and cannot be merged.`)
           }
-          
+
           throw new Error(`Failed to process "${file.name}": ${errorMessage}`)
         }
       }
@@ -371,12 +389,12 @@ export class PDFProcessor {
       return compressedBytes
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error"
-      
+
       // Check for specific corruption errors
       if (errorMessage.includes("Expected instance of PDFDict") ||
-          errorMessage.includes("UnexpectedObjectTypeError") ||
-          errorMessage.includes("corrupted") ||
-          errorMessage.includes("invalid structure")) {
+        errorMessage.includes("UnexpectedObjectTypeError") ||
+        errorMessage.includes("corrupted") ||
+        errorMessage.includes("invalid structure")) {
         onProgress?.({
           progress: 0,
           status: "error",
@@ -384,7 +402,7 @@ export class PDFProcessor {
         })
         throw new Error(`PDF file "${pdfFile.name}" is corrupted or has an invalid structure and cannot be compressed.`)
       }
-      
+
       onProgress?.({
         progress: 0,
         status: "error",
@@ -481,27 +499,27 @@ export class PDFProcessor {
 
       const arrayBuffer = await file.arrayBuffer()
       const result = await mammoth.convertToHtml({ arrayBuffer })
-      
+
       onProgress?.({ progress: 40, status: "processing", message: "Converting to HTML..." })
-      
+
       // Sanitize HTML content to prevent XSS attacks
       const sanitizeHtml = (html: string): string => {
         // Remove all script tags and their content
         html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        
+
         // Remove event handlers (onclick, onload, etc.)
         html = html.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
         html = html.replace(/\s*on\w+\s*=\s*[^>\s]+/gi, '')
-        
+
         // Remove javascript: protocols
         html = html.replace(/javascript\s*:/gi, '')
-        
+
         // Remove data: URLs that could contain scripts
         html = html.replace(/data\s*:\s*[^;]*;[^,]*,/gi, 'data:text/plain,')
-        
+
         return html
       }
-      
+
       // Create a temporary container for the HTML content
       const tempDiv = document.createElement('div')
       tempDiv.innerHTML = sanitizeHtml(result.value)
@@ -532,11 +550,11 @@ export class PDFProcessor {
       // Create PDF from canvas
       const { format = "a4", orientation = "portrait" } = options
       const pdf = new jsPDF(orientation, 'mm', format)
-      
+
       const imgWidth = pdf.internal.pageSize.getWidth()
       const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight)
+
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgWidth, imgHeight)
 
       onProgress?.({ progress: 100, status: "complete", message: "Word document converted successfully!" })
 
@@ -560,7 +578,7 @@ export class PDFProcessor {
 
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSXRead(arrayBuffer, { type: 'array' })
-      
+
       onProgress?.({ progress: 30, status: "processing", message: "Converting to HTML..." })
 
       // Convert first worksheet to HTML
@@ -572,17 +590,17 @@ export class PDFProcessor {
       const sanitizeHtml = (html: string): string => {
         // Remove all script tags and their content
         html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        
+
         // Remove event handlers (onclick, onload, etc.)
         html = html.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
         html = html.replace(/\s*on\w+\s*=\s*[^>\s]+/gi, '')
-        
+
         // Remove javascript: protocols
         html = html.replace(/javascript\s*:/gi, '')
-        
+
         // Remove data: URLs that could contain scripts
         html = html.replace(/data\s*:\s*[^;]*;[^,]*,/gi, 'data:text/plain,')
-        
+
         return html
       }
 
@@ -595,13 +613,13 @@ export class PDFProcessor {
       tempDiv.style.position = 'absolute'
       tempDiv.style.top = '-9999px'
       tempDiv.style.width = '1123px' // A4 width in landscape for tables
-      
+
       // Style the table
       const table = tempDiv.querySelector('table')
       if (table) {
         table.style.borderCollapse = 'collapse'
         table.style.width = '100%'
-        
+
         // Style cells
         const cells = table.querySelectorAll('td, th')
         cells.forEach(cell => {
@@ -611,7 +629,7 @@ export class PDFProcessor {
           cellElement.style.textAlign = 'left'
         })
       }
-      
+
       document.body.appendChild(tempDiv)
 
       onProgress?.({ progress: 60, status: "processing", message: "Rendering PDF..." })
@@ -632,26 +650,26 @@ export class PDFProcessor {
       // Create PDF from canvas
       const { format = "a4", orientation = "landscape" } = options // Default landscape for spreadsheets
       const pdf = new jsPDF(orientation, 'mm', format)
-      
+
       const imgWidth = pdf.internal.pageSize.getWidth()
       const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
+
       // If content is too tall, split into multiple pages
       const pageHeight = pdf.internal.pageSize.getHeight()
       let yPosition = 0
-      
+
       while (yPosition < imgHeight) {
         if (yPosition > 0) {
           pdf.addPage()
         }
-        
+
         const sliceHeight = Math.min(pageHeight, imgHeight - yPosition)
         const canvasSlice = document.createElement('canvas')
         const sliceCtx = canvasSlice.getContext('2d')!
-        
+
         canvasSlice.width = canvas.width
         canvasSlice.height = (sliceHeight * canvas.width) / imgWidth
-        
+
         sliceCtx.drawImage(
           canvas,
           0, (yPosition * canvas.width) / imgWidth,
@@ -659,8 +677,8 @@ export class PDFProcessor {
           0, 0,
           canvas.width, canvasSlice.height
         )
-        
-        pdf.addImage(canvasSlice.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, sliceHeight)
+
+        pdf.addImage(canvasSlice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgWidth, sliceHeight)
         yPosition += pageHeight
       }
 
@@ -685,33 +703,33 @@ export class PDFProcessor {
       onProgress?.({ progress: 20, status: "processing", message: "Reading text file..." })
 
       const text = await file.text()
-      
+
       onProgress?.({ progress: 50, status: "processing", message: "Generating PDF..." })
 
       const { format = "a4", orientation = "portrait", margin = 20 } = options
       const pdf = new jsPDF(orientation, 'mm', format)
-      
+
       // Set up text formatting
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(12)
-      
+
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()
       const textWidth = pageWidth - (margin * 2)
       const lineHeight = 7
-      
+
       // Split text into lines that fit the page width
       const lines = pdf.splitTextToSize(text, textWidth)
-      
+
       let yPosition = margin
-      
+
       for (let i = 0; i < lines.length; i++) {
         // Check if we need a new page
         if (yPosition + lineHeight > pageHeight - margin) {
           pdf.addPage()
           yPosition = margin
         }
-        
+
         pdf.text(lines[i], margin, yPosition)
         yPosition += lineHeight
       }
@@ -737,7 +755,7 @@ export class PDFProcessor {
       onProgress?.({ progress: 20, status: "processing", message: "Reading HTML file..." })
 
       const htmlContent = await file.text()
-      
+
       onProgress?.({ progress: 40, status: "processing", message: "Rendering HTML..." })
 
       // Create a temporary container for the HTML content
@@ -768,11 +786,11 @@ export class PDFProcessor {
       // Create PDF from canvas
       const { format = "a4", orientation = "portrait" } = options
       const pdf = new jsPDF(orientation, 'mm', format)
-      
+
       const imgWidth = pdf.internal.pageSize.getWidth()
       const imgHeight = (canvas.height * imgWidth) / canvas.width
-      
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight)
+
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgWidth, imgHeight)
 
       onProgress?.({ progress: 100, status: "complete", message: "HTML file converted successfully!" })
 
@@ -792,7 +810,7 @@ export class PDFProcessor {
     options: DocumentConversionOptions = {}
   ): Promise<Uint8Array> {
     const fileExtension = file.name.toLowerCase().split('.').pop()
-    
+
     switch (fileExtension) {
       case 'docx':
         return this.convertWordToPDF(file, onProgress, options)
@@ -804,8 +822,15 @@ export class PDFProcessor {
       case 'html':
       case 'htm':
         return this.convertHTMLToPDF(file, onProgress, options)
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+        return this.createPDFFromImages([file], onProgress)
       default:
-        throw new Error(`Unsupported file format: .${fileExtension}. Supported formats: .docx, .xlsx, .xls, .txt, .html`)
+        throw new Error(`Unsupported file format: .${fileExtension}. Supported formats: .docx, .xlsx, .xls, .txt, .html, .png, .jpg, etc.`)
     }
   }
 
@@ -843,13 +868,13 @@ export class PDFProcessor {
 
         // Create new document for this split
         const splitDoc = await PDFDocument.create()
-        
+
         // Copy pages in the specified range
         const pageIndices = Array.from(
-          { length: endPage - startPage + 1 }, 
+          { length: endPage - startPage + 1 },
           (_, idx) => startPage - 1 + idx
         )
-        
+
         const copiedPages = await splitDoc.copyPages(pdfDoc, pageIndices)
         copiedPages.forEach(page => splitDoc.addPage(page))
 
@@ -895,10 +920,10 @@ export class PDFProcessor {
 
       // Create new document for extracted pages
       const extractedDoc = await PDFDocument.create()
-      
+
       // Convert to zero-based indices and sort
       const pageIndices = pageNumbers.map(page => page - 1).sort((a, b) => a - b)
-      
+
       const copiedPages = await extractedDoc.copyPages(pdfDoc, pageIndices)
       copiedPages.forEach(page => extractedDoc.addPage(page))
 
@@ -949,7 +974,7 @@ export class PDFProcessor {
 
         // Copy the page from source
         const [copiedPage] = await rotatedPdf.copyPages(pdfDoc, [i])
-        
+
         // Apply rotation if specified
         if (rotation > 0) {
           copiedPage.setRotation(degrees(rotation))
@@ -972,89 +997,121 @@ export class PDFProcessor {
   }
 
   /**
-   * Add password protection to PDF
+   * Add password protection to PDF.
+   *
+   * NOTE: pdf-lib does not support AES/RC4 encryption in the browser.
+   * Throwing here intentionally so no fake "protected" file is ever produced.
+   * Real encryption requires a server-side solution (e.g. ghostscript, qpdf).
    */
   static async addPasswordToPDF(
+    _file: File,
+    _userPassword: string,
+    _ownerPassword?: string,
+    _onProgress?: (progress: ProcessingProgress) => void
+  ): Promise<Uint8Array> {
+    throw new Error(
+      'PDF encryption is not supported in the browser. ' +
+      'The output would not be password-protected. ' +
+      'Server-side processing is required for real encryption.'
+    )
+  }
+
+  static async addWatermark(
     file: File,
-    userPassword: string,
-    ownerPassword?: string,
+    options: WatermarkOptions,
     onProgress?: (progress: ProcessingProgress) => void
   ): Promise<Uint8Array> {
-    try {
-      onProgress?.({ progress: 20, status: "processing", message: "Loading PDF..." })
+    const {
+      text,
+      fontSize = 48,
+      opacity = 0.3,
+      rotation = 45,
+      color = { r: 0.5, g: 0.5, b: 0.5 },
+    } = options
 
+    try {
+      onProgress?.({ progress: 10, status: 'processing', message: 'Loading PDF...' })
       const pdfBytes = await this.loadPDF(file)
       const pdfDoc = await this.loadPDFDocument(pdfBytes)
+      const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+      const totalPages = pdfDoc.getPageCount()
 
-      onProgress?.({ progress: 50, status: "processing", message: "Applying password protection..." })
+      onProgress?.({ progress: 30, status: 'processing', message: 'Applying watermark...' })
 
-      // Note: pdf-lib doesn't support encryption directly in browser
-      // This is a simplified approach - in production, you'd need server-side processing
-      // For now, we'll create a new PDF with the content and add basic protection metadata
+      for (let i = 0; i < totalPages; i++) {
+        const page = pdfDoc.getPage(i)
+        const { width, height } = page.getSize()
+        const textWidth = font.widthOfTextAtSize(text, fontSize)
+        page.drawText(text, {
+          x: (width - textWidth) / 2,
+          y: height / 2 - fontSize / 2,
+          size: fontSize,
+          font,
+          color: rgb(color.r, color.g, color.b),
+          opacity,
+          rotate: degrees(rotation),
+        })
+        onProgress?.({ progress: 30 + ((i + 1) / totalPages) * 60, status: 'processing', message: `Watermarking page ${i + 1} of ${totalPages}...` })
+      }
 
-      // Create a new PDF and copy all pages
-      const protectedDoc = await PDFDocument.create()
-      const pageIndices = pdfDoc.getPageIndices()
-      const copiedPages = await protectedDoc.copyPages(pdfDoc, pageIndices)
-      copiedPages.forEach(page => protectedDoc.addPage(page))
-
-      // Add metadata indicating password protection
-      protectedDoc.setTitle(`Protected: ${file.name}`)
-      protectedDoc.setSubject('Password Protected Document')
-      protectedDoc.setCreator('PDF Utility Tool')
-      protectedDoc.setProducer('PDF Utility Tool - Password Protection')
-
-      onProgress?.({ progress: 80, status: "processing", message: "Finalizing protected PDF..." })
-
-      const protectedBytes = await protectedDoc.save()
-
-      onProgress?.({ 
-        progress: 100, 
-        status: "complete", 
-        message: "Password protection applied! Note: Browser-based encryption has limitations." 
-      })
-
-      return protectedBytes
+      onProgress?.({ progress: 95, status: 'processing', message: 'Saving...' })
+      const result = await pdfDoc.save()
+      onProgress?.({ progress: 100, status: 'complete', message: 'Watermark applied successfully!' })
+      return result
     } catch (error) {
-      console.error('PDF password protection error:', error)
-      throw new Error(`Failed to add password protection: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Watermark error:', error)
+      throw new Error(`Failed to add watermark: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Extract text content from PDF
+   * Extract text content from PDF using pdfjs-dist
    */
   static async extractTextFromPDF(
     file: File,
     onProgress?: (progress: ProcessingProgress) => void
   ): Promise<string> {
     try {
-      onProgress?.({ progress: 20, status: "processing", message: "Loading PDF..." })
+      onProgress?.({ progress: 10, status: "processing", message: "Loading PDF..." })
 
-      const pdfBytes = await this.loadPDF(file)
-      const pdfDoc = await this.loadPDFDocument(pdfBytes)
-      const totalPages = pdfDoc.getPageCount()
+      const pdfjsLib = await import('pdfjs-dist')
+      if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs'
+      }
 
-      onProgress?.({ progress: 40, status: "processing", message: "Extracting text..." })
+      const arrayBuffer = await file.arrayBuffer()
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+      const pdf = await loadingTask.promise
+      const totalPages = pdf.numPages
+
+      onProgress?.({ progress: 20, status: "processing", message: "Extracting text..." })
 
       let extractedText = ""
 
-      for (let i = 0; i < totalPages; i++) {
-        const progress = 40 + (i / totalPages) * 50
+      for (let i = 1; i <= totalPages; i++) {
+        const progress = 20 + (i / totalPages) * 75
         onProgress?.({
           progress,
           status: "processing",
-          message: `Extracting text from page ${i + 1} of ${totalPages}...`
+          message: `Extracting text from page ${i} of ${totalPages}...`
         })
 
-        const page = pdfDoc.getPage(i)
-        
-        // Note: pdf-lib has limited text extraction capabilities
-        // This is a basic implementation - for better text extraction,
-        // you'd need additional libraries like pdf-parse
-        
-        extractedText += `\n--- Page ${i + 1} ---\n`
-        extractedText += `[Text extraction from page ${i + 1}]\n`
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+
+        const pageText = textContent.items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: any) => ('str' in item ? item.str : ''))
+          .join(' ')
+          .replace(/ {2,}/g, ' ')
+          .trim()
+
+        extractedText += `\n--- Page ${i} ---\n`
+        if (pageText) {
+          extractedText += pageText + '\n'
+        } else {
+          extractedText += '[No extractable text on this page]\n'
+        }
       }
 
       onProgress?.({ progress: 100, status: "complete", message: "Text extracted successfully!" })
@@ -1105,6 +1162,89 @@ export class PDFProcessor {
         }
       }
       throw error
+    }
+  }
+
+  static async getPageThumbnails(file: File, onProgress?: (progress: ProcessingProgress) => void): Promise<string[]> {
+    try {
+      const pdfjsLib = await import('pdfjs-dist')
+      if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs'
+      }
+
+      const arrayBuffer = await file.arrayBuffer()
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+      const pdf = await loadingTask.promise
+      const numPages = pdf.numPages
+      const thumbnails: string[] = []
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i)
+        const viewport = page.getViewport({ scale: 0.4 }) // Reasonably sized thumbnails
+        const canvas = document.createElement("canvas")
+        const context = canvas.getContext("2d")
+        canvas.height = viewport.height
+        canvas.width = viewport.width
+
+        if (context) {
+          await page.render({ canvasContext: context, viewport }).promise
+          thumbnails.push(canvas.toDataURL("image/jpeg", 0.8))
+        }
+
+        onProgress?.({
+          progress: (i / numPages) * 100,
+          status: "processing",
+          message: `Generating thumbnail for page ${i} of ${numPages}...`,
+        })
+      }
+
+      return thumbnails
+    } catch (error) {
+      console.error("Error generating thumbnails:", error)
+      throw new Error(`Failed to generate thumbnails: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+  }
+
+  static async composePDF(
+    pageConfigs: Array<{ file: File; pageIndex: number; rotation?: number }>,
+    onProgress?: (progress: ProcessingProgress) => void,
+  ): Promise<Uint8Array> {
+    try {
+      onProgress?.({ progress: 5, status: "processing", message: "Preparing document composition..." })
+      const outPdf = await PDFDocument.create()
+
+      // Map to cache loaded PDFDocuments by File object to avoid redundant parsing
+      const docCache = new Map<File, PDFDocument>()
+
+      for (let i = 0; i < pageConfigs.length; i++) {
+        const { file, pageIndex, rotation } = pageConfigs[i]
+
+        let srcDoc = docCache.get(file)
+        if (!srcDoc) {
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+          docCache.set(file, srcDoc)
+        }
+
+        const [copiedPage] = await outPdf.copyPages(srcDoc, [pageIndex])
+        if (rotation !== undefined) {
+          copiedPage.setRotation(degrees(rotation))
+        }
+        outPdf.addPage(copiedPage)
+
+        onProgress?.({
+          progress: 10 + (i / pageConfigs.length) * 85,
+          status: "processing",
+          message: `Processing page ${i + 1} of ${pageConfigs.length}...`,
+        })
+      }
+
+      const pdfBytes = await outPdf.save()
+      onProgress?.({ progress: 100, status: "complete", message: "Document composition successful!" })
+      return pdfBytes
+    } catch (error) {
+      console.error("Error composing PDF:", error)
+      throw new Error(`Failed to compose PDF: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 }

@@ -17,7 +17,7 @@ export function ThemeSwitcher() {
     return (
       <div className="flex items-center gap-2 opacity-50">
         <Sun className="h-4 w-4" />
-        <Switch disabled />
+        <Switch disabled checked={false} aria-label="Toggle theme" />
         <Moon className="h-4 w-4" />
       </div>
     )
@@ -28,9 +28,9 @@ export function ThemeSwitcher() {
   return (
     <div className="flex items-center gap-2">
       <Sun className="h-4 w-4" />
-      <Switch 
-        checked={isDark} 
-        onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} 
+      <Switch
+        checked={!!isDark}
+        onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
       />
       <Moon className="h-4 w-4" />
     </div>
