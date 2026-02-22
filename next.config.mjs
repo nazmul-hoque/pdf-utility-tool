@@ -37,6 +37,19 @@ const nextConfig = {
           },
         ],
       },
+      // Force correct MIME type for .mjs worker files serving from public/
+      {
+        source: '/pdf.worker.mjs',
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript' },
+        ],
+      },
+      {
+        source: '/pdf.worker.react-pdf.mjs',
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript' },
+        ],
+      },
       // COEP/COOP headers required for SharedArrayBuffer (PDF worker)
       {
         source: '/workers/:path*',
