@@ -10,11 +10,10 @@ import { PDFFallbackViewer } from "./pdf-fallback-viewer"
 import dynamic from "next/dynamic"
 
 // Set up PDF.js worker at module level
-// react-pdf bundles pdfjs-dist@5.3.31 — use a matching worker file,
-// separate from the 5.3.93 worker used by pdf-utils.ts directly.
+// react-pdf bundles pdfjs-dist@5.3.31 — use a matching worker file via CDN.
 if (typeof window !== 'undefined') {
   import('react-pdf').then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
   }).catch(err => {
     console.error('Failed to import react-pdf:', err)
   })
@@ -43,8 +42,8 @@ const PDFViewer = dynamic(
         const { Document, Page, pdfjs } = pdfModule
         const { useMemo } = await import("react")
 
-        // Ensure worker is set up (fallback for dynamic import path)
-        pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
+        // Ensure worker is set up via Unpkg CDN
+        pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
         return {
           default: ({
             pdfUrl,
