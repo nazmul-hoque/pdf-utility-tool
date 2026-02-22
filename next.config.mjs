@@ -37,15 +37,15 @@ const nextConfig = {
           },
         ],
       },
-      // Force correct MIME type for .mjs worker files serving from public/
+      // Force correct MIME type for worker files serving from public/
       {
-        source: '/pdf.worker.mjs',
+        source: '/pdf.worker.min.js',
         headers: [
           { key: 'Content-Type', value: 'application/javascript' },
         ],
       },
       {
-        source: '/pdf.worker.react-pdf.mjs',
+        source: '/pdf.worker.react-pdf.min.js',
         headers: [
           { key: 'Content-Type', value: 'application/javascript' },
         ],

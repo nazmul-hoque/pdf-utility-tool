@@ -14,7 +14,7 @@ import dynamic from "next/dynamic"
 // separate from the 5.3.93 worker used by pdf-utils.ts directly.
 if (typeof window !== 'undefined') {
   import('react-pdf').then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.mjs`
+    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
   }).catch(err => {
     console.error('Failed to import react-pdf:', err)
   })
@@ -44,8 +44,9 @@ const PDFViewer = dynamic(
         const { useMemo } = await import("react")
 
         // Ensure worker is set up (fallback for dynamic import path)
-        pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.mjs`
-
+        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+          pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
+        }
         return {
           default: ({
             pdfUrl,
