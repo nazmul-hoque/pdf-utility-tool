@@ -63,6 +63,12 @@ const nextConfig = {
           { key: 'Content-Type', value: 'application/javascript' },
         ],
       },
+      {
+        source: '/pdf.worker.mjs',
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript' },
+        ],
+      },
       // COEP/COOP headers required for SharedArrayBuffer (PDF worker)
       {
         source: '/workers/:path*',
