@@ -44,9 +44,7 @@ const PDFViewer = dynamic(
         const { useMemo } = await import("react")
 
         // Ensure worker is set up (fallback for dynamic import path)
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-          pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
-        }
+        pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.react-pdf.min.js`
         return {
           default: ({
             pdfUrl,

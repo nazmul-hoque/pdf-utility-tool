@@ -1075,7 +1075,7 @@ export class PDFProcessor {
       onProgress?.({ progress: 10, status: "processing", message: "Loading PDF..." })
 
       const pdfjsLib = await import('pdfjs-dist')
-      if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      if (typeof window !== 'undefined') {
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
       }
 
@@ -1168,7 +1168,7 @@ export class PDFProcessor {
   static async getPageThumbnails(file: File, onProgress?: (progress: ProcessingProgress) => void): Promise<string[]> {
     try {
       const pdfjsLib = await import('pdfjs-dist')
-      if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      if (typeof window !== 'undefined') {
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
       }
 
