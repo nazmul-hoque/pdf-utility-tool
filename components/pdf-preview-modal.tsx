@@ -11,12 +11,8 @@ import dynamic from "next/dynamic"
 import { pdfjs } from "react-pdf"
 
 // Set up PDF.js worker synchronously at module load time.
-// Next.js will automatically bundle this and serve it with the proper hash/MIME type.
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-  ).toString()
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 }
 
 // Create an inline PDF viewer component to avoid chunk loading issues
