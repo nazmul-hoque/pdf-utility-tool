@@ -132,6 +132,12 @@ export function AeroStudioTab({ onOpenPreview }: AeroStudioTabProps) {
           <CardDescription>Visually organise, reorder, and compose your perfect PDF document.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Error shown regardless of whether pages have loaded yet */}
+          {!isProcessing && processingProgress?.status === "error" && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+              <p className="text-sm text-destructive">{processingProgress.message}</p>
+            </div>
+          )}
           {studioPages.length === 0 ? (
             <div
               className="border-2 border-dashed border-primary/20 bg-primary/5 rounded-2xl p-20 text-center hover:border-primary/50 hover:bg-primary/10 transition-all duration-500 cursor-pointer group relative overflow-hidden shadow-inner"
